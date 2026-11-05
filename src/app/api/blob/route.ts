@@ -8,11 +8,14 @@ import {
   blobPathname,
   resolveDeviceId,
 } from "@/generation/device";
-
-// Anyone who can hit this route can upload. Gate it when auth exists.
+import { PLATFORM_KEY_COOKIE, decodeCredentials } from "@/generation/credentials";
 
 export async function POST(request: Request): Promise<NextResponse> {
   const incoming = (await request.json()) as HandleUploadBody;
+  // Only visitors who already saved a platform key may request an upload token.
+  if (incoming.type === "blob.generate-client-token" && !(await hasPlatformKey())) {
+    return NextResponse.json({ error: "Add your platform key before uploading" }, { status: 401 });
+  }
   const device =
     incoming.type === "blob.generate-client-token" ? await readDeviceId() : null;
   const body = device ? withDevicePath(incoming, device.deviceId) : incoming;
@@ -52,6 +55,11 @@ export async function POST(request: Request): Promise<NextResponse> {
     if (device?.minted) return withDeviceCookie(new NextResponse(null, { status: 500 }), device);
     throw error;
   }
+}
+
+async function hasPlatformKey() {
+  const jar = await cookies();
+  return decodeCredentials(jar.get(PLATFORM_KEY_COOKIE)?.value) !== null;
 }
 
 async function readDeviceId() {
